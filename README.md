@@ -227,10 +227,14 @@ sudo install -d -m 0755 /var/log/vulnscan
 sudo install -d -m 0755 /opt/nuclei_poc
 ```
 
-安装二进制。按目标架构选择对应产物：
+安装二进制。按目标架构选择一个对应产物：
 
 ```bash
 sudo install -m 0755 /tmp/vulnscan-wrapper-linux-amd64 /opt/vulnscan/vulnscan-wrapper
+# 或：
+sudo install -m 0755 /tmp/vulnscan-wrapper-linux-arm64 /opt/vulnscan/vulnscan-wrapper
+# 或：
+sudo install -m 0755 /tmp/vulnscan-wrapper-linux-armv7 /opt/vulnscan/vulnscan-wrapper
 ```
 
 安装 POC map：
