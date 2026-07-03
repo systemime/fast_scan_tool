@@ -278,6 +278,71 @@ curl -sS 'http://127.0.0.1:8080/scan?namespace=ns1'
 }
 ```
 
+构建方式：
+
+1. 先确定 nuclei 模板根目录：
+
+```bash
+POC_DIR=/opt/nuclei_poc/poc_high_quality
+find "$POC_DIR" -maxdepth 2 -type d | sed "s#^$POC_DIR/##" | sort | head -80
+```
+
+2. 按实际目录写 map。key 用 fscan/HTTP 指纹里可能出现的关键词，例如 `http`、`nginx`、`tomcat`、`jenkins`、`redis`、`port:80`。value 必须是 `POC_DIR` 下的相对路径：
+
+```bash
+sudo tee /etc/vulnscan/poc-map.json >/dev/null <<'EOF'
+{
+  "http": ["http/"],
+  "https": ["http/"],
+  "port:80": ["http/"],
+  "port:443": ["http/"],
+  "nginx": ["nginx/"],
+  "tomcat": ["tomcat/"],
+  "jenkins": ["jenkins/"],
+  "redis": ["redis/"],
+  "mysql": ["mysql/"],
+  "_baseline": ["http/"]
+}
+EOF
+```
+
+上面的 value 只是示例。模板仓库里没有对应目录时，要改成真实存在的目录或 YAML 文件。仓库自带的 `poc-map-budget.example.json` 可以直接作为 `/opt/nuclei_poc/poc_high_quality` 结构的起点。
+
+3. 校验 map 里的路径：
+
+```bash
+POC_DIR=/opt/nuclei_poc/poc_high_quality
+MAP=/etc/vulnscan/poc-map.json
+
+python3 - <<'PY'
+import json
+import os
+import sys
+
+poc_dir = os.path.abspath(os.environ["POC_DIR"])
+map_path = os.environ["MAP"]
+mapping = json.load(open(map_path, encoding="utf-8"))
+errors = []
+
+for key, values in mapping.items():
+    if not isinstance(values, list):
+        errors.append(f"{key}: value must be a list")
+        continue
+    for value in values:
+        path = os.path.abspath(os.path.join(poc_dir, value))
+        if os.path.commonpath([poc_dir, path]) != poc_dir:
+            errors.append(f"{key}: out of poc_dir: {value}")
+        elif not os.path.exists(path):
+            errors.append(f"{key}: missing: {value}")
+
+if errors:
+    print("\n".join(errors))
+    sys.exit(1)
+
+print("poc-map ok")
+PY
+```
+
 模板选择规则：
 
 1. 未配置、读取失败或解析失败 `poc_map` 时，加载整个 `poc_dir`。
