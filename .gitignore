@@ -1,0 +1,32 @@
+# Build outputs
+/dist/
+/vulnscan
+/vulnscan-wrapper
+/vulnscan-wrapper-*
+
+# Runtime state
+/*.db
+/*.db-*
+/tasks.db
+*.log
+*.out
+*.pid
+
+# Local scan outputs
+/*result*.json
+/scan-result.json
+
+# GitNexus generated data
+/.gitnexus/lbug
+/.gitnexus/parse-cache/
+/.gitnexus/parsedfile-cache/
+
+# Local assistant guidance
+/AGENTS.md
+/CLAUDE.md
+/.claude/
+
+# OS/editor noise
+.DS_Store
+*.swp
+*.tmp
