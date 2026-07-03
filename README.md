@@ -8,7 +8,7 @@
 namespace + IP 列表
   -> fscan SDK 资产识别
   -> 轻量 HTTP 指纹补充
-  -> poc_map 收敛 nuclei 模板
+  -> 可选 poc_map 收敛 nuclei 模板
   -> nuclei SDK 漏洞验证
   -> JSON / SQLite 结果
 ```
@@ -31,12 +31,10 @@ case "$(uname -m)" in
 esac
 
 curl -L -o /tmp/vulnscan-wrapper "${BASE_URL}/${ASSET}"
-curl -L -o /tmp/poc-map-budget.example.json "${BASE_URL}/poc-map-budget.example.json"
 chmod +x /tmp/vulnscan-wrapper
 
 sudo install -d -m 0755 /opt/vulnscan /etc/vulnscan /var/lib/vulnscan /var/log/vulnscan
 sudo install -m 0755 /tmp/vulnscan-wrapper /opt/vulnscan/vulnscan-wrapper
-sudo install -m 0644 /tmp/poc-map-budget.example.json /etc/vulnscan/poc-map.json
 
 /opt/vulnscan/vulnscan-wrapper --help
 ```
@@ -47,13 +45,14 @@ sudo install -m 0644 /tmp/poc-map-budget.example.json /etc/vulnscan/poc-map.json
 sudo git clone <poc_repo_url> /opt/nuclei_poc/poc_high_quality
 ```
 
-如果模板目录不是 `/opt/nuclei_poc/poc_high_quality`，同步修改 `VST_POC_DIR` 和 `poc_map` 里的相对路径。
+如果模板目录不是 `/opt/nuclei_poc/poc_high_quality`，同步修改 `VST_POC_DIR`。配置了 `poc_map` 时，再同步 map 里的相对路径。
 
 ## CLI 扫描
 
+只指定 `VST_POC_DIR` 时，nuclei 会直接加载该目录下的模板；不需要把 POC 仓库转换成 JSON。
+
 ```bash
 VST_POC_DIR=/opt/nuclei_poc/poc_high_quality \
-VST_POC_MAP=/etc/vulnscan/poc-map.json \
 VST_NUCLEI_CONCURRENCY=50 \
 VST_NUCLEI_HOST_CONCURRENCY=10 \
 VST_NUCLEI_TIMEOUT=2 \
@@ -66,7 +65,42 @@ VST_NUCLEI_TIMEOUT=2 \
   -out scan-result.json
 ```
 
+这段命令的含义：
+
+| 配置/参数 | 含义 |
+| --- | --- |
+| `VST_POC_DIR=/opt/nuclei_poc/poc_high_quality` | nuclei 模板目录 |
+| `VST_NUCLEI_CONCURRENCY=50` | 单个 host 内 nuclei 模板并发数 |
+| `VST_NUCLEI_HOST_CONCURRENCY=10` | 单个 host 内 nuclei target 并发数 |
+| `VST_NUCLEI_TIMEOUT=2` | nuclei 单次请求/连接超时，单位秒 |
+| `/opt/vulnscan/vulnscan-wrapper scan` | 启动一次 CLI 扫描 |
+| `-namespace ns1` | 在 `ns1` 这个 Linux network namespace 内扫描 |
+| `-ips 10.0.0.1,10.0.0.2` | 本次扫描的目标 IP 列表 |
+| `-timeout 600` | 每个 IP 最多扫描 600 秒 |
+| `-workers 6` | 同时扫描 6 个 IP |
+| `-total-timeout 1800` | 本次 CLI 扫描总预算 1800 秒 |
+| `-out scan-result.json` | 扫描结果写入 `scan-result.json` |
+
 CLI 模式不启动 HTTP 服务，也不写 SQLite。每个 host 都会写入 JSON；失败原因在对应 host 的 `error` 字段里。
+
+需要减少模板加载量时，再加 `VST_POC_MAP`：
+
+```bash
+VERSION=v0.1.0
+BASE_URL=https://github.com/systemime/fast_scan_tool/releases/download/${VERSION}
+
+curl -L -o /tmp/poc-map-budget.example.json "${BASE_URL}/poc-map-budget.example.json"
+sudo install -m 0644 /tmp/poc-map-budget.example.json /etc/vulnscan/poc-map.json
+
+VST_POC_DIR=/opt/nuclei_poc/poc_high_quality \
+VST_POC_MAP=/etc/vulnscan/poc-map.json \
+/opt/vulnscan/vulnscan-wrapper scan \
+  -namespace ns1 \
+  -ips 10.0.0.1,10.0.0.2 \
+  -out scan-result.json
+```
+
+`VST_POC_MAP` 不是第二个 POC 仓库。它只是“资产指纹 -> `VST_POC_DIR` 下的相对路径”映射，用来少跑模板。map 路径不匹配当前模板仓库时，不要配置它，直接扫 `VST_POC_DIR` 更稳。
 
 常用参数：
 
@@ -97,7 +131,6 @@ sudo tee /etc/vulnscan/vulnscan.env >/dev/null <<'EOF'
 VST_ADDR=127.0.0.1:8080
 VST_DB=/var/lib/vulnscan/tasks.db
 VST_POC_DIR=/opt/nuclei_poc/poc_high_quality
-VST_POC_MAP=/etc/vulnscan/poc-map.json
 VST_WORKERS=6
 VST_FSCAN_THREADS=256
 VST_FSCAN_TIMEOUT=3
@@ -193,7 +226,7 @@ curl -sS 'http://127.0.0.1:8080/scan?namespace=ns1'
   "addr": "127.0.0.1:8080",
   "db_path": "/var/lib/vulnscan/tasks.db",
   "poc_dir": "/opt/nuclei_poc/poc_high_quality",
-  "poc_map": "/etc/vulnscan/poc-map.json",
+  "poc_map": "",
   "workers": 6,
   "nuclei_concurrency": 50,
   "nuclei_host_concurrency": 10,
@@ -226,7 +259,7 @@ curl -sS 'http://127.0.0.1:8080/scan?namespace=ns1'
 
 ## POC Map
 
-`poc_map` 是 JSON 文件。key 是资产指纹关键词，value 是 `poc_dir` 下的目录或模板文件。
+`poc_map` 是可选 JSON 文件。key 是资产指纹关键词，value 是 `poc_dir` 下的目录或模板文件。
 
 ```json
 {
@@ -247,10 +280,10 @@ curl -sS 'http://127.0.0.1:8080/scan?namespace=ns1'
 
 模板选择规则：
 
-1. 命中指纹时，加载命中路径和 `_baseline` / `baseline`。
-2. 配置了 `poc_map` 但未命中时，只加载 `_fallback` / `fallback` / `_baseline` / `baseline`。
-3. 上一步也没有可用路径时，跳过 nuclei。
-4. 未配置、读取失败或解析失败 `poc_map` 时，回退加载整个 `poc_dir`。
+1. 未配置、读取失败或解析失败 `poc_map` 时，加载整个 `poc_dir`。
+2. 配置了 `poc_map` 且命中指纹时，加载命中路径和 `_baseline` / `baseline`。
+3. 配置了 `poc_map` 但未命中时，只加载 `_fallback` / `fallback` / `_baseline` / `baseline`。
+4. 上一步也没有可用路径时，跳过 nuclei。
 5. 映射路径必须位于 `poc_dir` 内，越界路径会被忽略。
 
 仓库内的 `poc-map-budget.example.json` 按 `/opt/nuclei_poc/poc_high_quality` 结构整理。换模板库时，先检查路径，再看日志里的 `poc_map_hit_rate` 和 `templates_selected`。
