@@ -2,9 +2,50 @@
 
 本项目是一个本地资产与漏洞扫描工具。服务模式下接收 Linux network namespace 下的 host 列表，写入 SQLite，由 worker 池按 host 调度 fscan SDK 做资产识别，再把资产目标交给 nuclei SDK 做漏洞验证。CLI 模式可一次性扫描指定 namespace 下的多个 IP，并输出 JSON 文件。
 
-## 授权
+## 使用发布产物
 
-本项目仅允许个人、内部、研究、测试等非商业用途。未经版权方书面许可，禁止商业使用，包括但不限于销售、作为付费服务提供、嵌入商业产品，或用于商业咨询、扫描、安全、托管、运维服务。完整条款见 `LICENSE`。
+优先使用 GitHub Releases 中的静态二进制，不需要在目标服务器安装 Go。
+
+下载对应架构产物：
+
+```bash
+VERSION=v0.1.0
+BASE_URL=https://github.com/systemime/fast_scan_tool/releases/download/${VERSION}
+
+# x86_64
+curl -L -o /tmp/vulnscan-wrapper "${BASE_URL}/vulnscan-wrapper-linux-amd64"
+
+# ARM64
+curl -L -o /tmp/vulnscan-wrapper "${BASE_URL}/vulnscan-wrapper-linux-arm64"
+
+# ARMv7
+curl -L -o /tmp/vulnscan-wrapper "${BASE_URL}/vulnscan-wrapper-linux-armv7"
+
+chmod +x /tmp/vulnscan-wrapper
+/tmp/vulnscan-wrapper --help
+```
+
+安装到目标服务器：
+
+```bash
+sudo install -d -m 0755 /opt/vulnscan /etc/vulnscan /var/lib/vulnscan /var/log/vulnscan
+sudo install -m 0755 /tmp/vulnscan-wrapper /opt/vulnscan/vulnscan-wrapper
+sudo curl -L -o /etc/vulnscan/poc-map.json "${BASE_URL}/poc-map-budget.example.json"
+```
+
+准备 nuclei POC 目录后即可运行：
+
+```bash
+VST_POC_DIR=/opt/nuclei_poc/poc_high_quality \
+VST_POC_MAP=/etc/vulnscan/poc-map.json \
+/opt/vulnscan/vulnscan-wrapper scan \
+  -namespace ns1 \
+  -ips 10.0.0.1,10.0.0.2 \
+  -timeout 600 \
+  -workers 6 \
+  -total-timeout 1800 \
+  -out scan-result.json
+```
 
 ## 功能概览
 
@@ -572,6 +613,7 @@ VST_HTTP_FINGERPRINT_TIMEOUT=2
 
 ## 安全注意事项
 
+- 本项目仅允许个人、内部、研究、测试等非商业用途；未经书面许可禁止商业使用，完整条款见 `LICENSE`。
 - HTTP 服务默认只监听 `127.0.0.1`；如需远程访问，建议使用 SSH tunnel。
 - nuclei template 可执行网络请求和模板逻辑，`VST_POC_DIR` 必须可信。
 - fscan 当前关闭 brute 和 POC 扫描，本项目只把 fscan 用作资产识别。
