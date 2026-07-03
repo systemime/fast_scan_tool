@@ -15,37 +15,76 @@ namespace + IP 列表
 
 CLI 模式适合一次性扫描一个 namespace 下的多个 IP。HTTP 服务模式适合接收任务、持久化状态并持续调度。
 
-## 快速安装
+目录：
 
-Release 提供 Linux 静态二进制，目标机器不需要安装 Go。
+- [HTTP 服务](#http-服务)
+- [CLI 扫描](#cli-扫描)
+- [API](#api)
+- [配置](#配置)
+- [POC Map](#poc-map)
+- [构建](#构建)
+- [开发检查](#开发检查)
+- [扫描流程](#扫描流程)
+- [日志和排查](#日志和排查)
+- [安全与限制](#安全与限制)
 
-```bash
-VERSION=v0.1.0
-BASE_URL=https://github.com/systemime/fast_scan_tool/releases/download/${VERSION}
+## HTTP 服务
 
-case "$(uname -m)" in
-  x86_64) ASSET=vulnscan-wrapper-linux-amd64 ;;
-  aarch64|arm64) ASSET=vulnscan-wrapper-linux-arm64 ;;
-  armv7l|armv7*) ASSET=vulnscan-wrapper-linux-armv7 ;;
-  *) echo "unsupported arch: $(uname -m)" >&2; exit 1 ;;
-esac
+服务模式会监听本地 API、写 SQLite，并由 worker 池调度扫描。进入 network namespace 通常需要 root 权限。
 
-curl -L -o /tmp/vulnscan-wrapper "${BASE_URL}/${ASSET}"
-chmod +x /tmp/vulnscan-wrapper
-
-sudo install -d -m 0755 /opt/vulnscan /etc/vulnscan /var/lib/vulnscan /var/log/vulnscan
-sudo install -m 0755 /tmp/vulnscan-wrapper /opt/vulnscan/vulnscan-wrapper
-
-/opt/vulnscan/vulnscan-wrapper --help
-```
-
-二进制不包含 nuclei 模板。准备模板目录后再扫描，例如：
+创建环境文件：
 
 ```bash
-sudo git clone <poc_repo_url> /opt/nuclei_poc/poc_high_quality
+sudo tee /etc/vulnscan/vulnscan.env >/dev/null <<'EOF'
+VST_ADDR=127.0.0.1:8080
+VST_DB=/var/lib/vulnscan/tasks.db
+VST_POC_DIR=/opt/nuclei_poc/poc_high_quality
+VST_WORKERS=6
+VST_FSCAN_THREADS=256
+VST_FSCAN_TIMEOUT=3
+VST_NUCLEI_CONCURRENCY=50
+VST_NUCLEI_HOST_CONCURRENCY=10
+VST_NUCLEI_TIMEOUT=2
+VST_HTTP_FINGERPRINT_TIMEOUT=2
+EOF
 ```
 
-如果模板目录不是 `/opt/nuclei_poc/poc_high_quality`，同步修改 `VST_POC_DIR`。配置了 `poc_map` 时，再同步 map 里的相对路径。
+创建 systemd 服务：
+
+```bash
+sudo tee /etc/systemd/system/vulnscan-wrapper.service >/dev/null <<'EOF'
+[Unit]
+Description=Vuln Scan Tool
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/vulnscan
+EnvironmentFile=/etc/vulnscan/vulnscan.env
+ExecStart=/opt/vulnscan/vulnscan-wrapper
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=1048576
+StandardOutput=append:/var/log/vulnscan/vulnscan-wrapper.log
+StandardError=append:/var/log/vulnscan/vulnscan-wrapper.log
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now vulnscan-wrapper
+sudo systemctl status vulnscan-wrapper --no-pager
+```
+
+老版本 systemd 不支持 `StandardOutput=append:` 时，删除 `StandardOutput` 和 `StandardError` 两行，改用 journald：
+
+```bash
+journalctl -u vulnscan-wrapper -f
+```
 
 ## CLI 扫描
 
@@ -118,64 +157,6 @@ VST_POC_MAP=/etc/vulnscan/poc-map.json \
 ```bash
 /opt/vulnscan/vulnscan-wrapper --help
 /opt/vulnscan/vulnscan-wrapper scan -h
-```
-
-## HTTP 服务
-
-服务模式会监听本地 API、写 SQLite，并由 worker 池调度扫描。进入 network namespace 通常需要 root 权限。
-
-创建环境文件：
-
-```bash
-sudo tee /etc/vulnscan/vulnscan.env >/dev/null <<'EOF'
-VST_ADDR=127.0.0.1:8080
-VST_DB=/var/lib/vulnscan/tasks.db
-VST_POC_DIR=/opt/nuclei_poc/poc_high_quality
-VST_WORKERS=6
-VST_FSCAN_THREADS=256
-VST_FSCAN_TIMEOUT=3
-VST_NUCLEI_CONCURRENCY=50
-VST_NUCLEI_HOST_CONCURRENCY=10
-VST_NUCLEI_TIMEOUT=2
-VST_HTTP_FINGERPRINT_TIMEOUT=2
-EOF
-```
-
-创建 systemd 服务：
-
-```bash
-sudo tee /etc/systemd/system/vulnscan-wrapper.service >/dev/null <<'EOF'
-[Unit]
-Description=Vuln Scan Tool
-Wants=network-online.target
-After=network-online.target
-
-[Service]
-Type=simple
-User=root
-Group=root
-WorkingDirectory=/opt/vulnscan
-EnvironmentFile=/etc/vulnscan/vulnscan.env
-ExecStart=/opt/vulnscan/vulnscan-wrapper
-Restart=on-failure
-RestartSec=5s
-LimitNOFILE=1048576
-StandardOutput=append:/var/log/vulnscan/vulnscan-wrapper.log
-StandardError=append:/var/log/vulnscan/vulnscan-wrapper.log
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable --now vulnscan-wrapper
-sudo systemctl status vulnscan-wrapper --no-pager
-```
-
-老版本 systemd 不支持 `StandardOutput=append:` 时，删除 `StandardOutput` 和 `StandardError` 两行，改用 journald：
-
-```bash
-journalctl -u vulnscan-wrapper -f
 ```
 
 ## API
