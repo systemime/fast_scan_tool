@@ -24,6 +24,7 @@ namespace + IP 列表
 
 - [CLI 最小使用](#cli-最小使用)
 - [HTTP 服务最小部署](#http-服务最小部署)
+- [输出格式](#输出格式)
 - [参数和环境变量](#参数和环境变量)
 - [POC 模板仓库](#poc-模板仓库)
 - [poc_map.json](#poc_mapjson)
@@ -150,6 +151,83 @@ HTTP API 只允许本机访问。远程调用用 SSH tunnel：
 
 ```bash
 ssh -L 8080:127.0.0.1:8080 root@target-server
+```
+
+## 输出格式
+
+CLI 扫描结果写入 `-out` 指定的 JSON 文件：
+
+```json
+{
+  "namespace": "ns1",
+  "hosts": [
+    {
+      "ip": "10.0.0.1",
+      "assets": [
+        {
+          "type": "service",
+          "target": "10.0.0.1:80",
+          "port": 80,
+          "service": "http",
+          "url": "http://10.0.0.1:80",
+          "title": "Example",
+          "server": "nginx",
+          "status_code": 200,
+          "is_web": true
+        }
+      ],
+      "vulnerabilities": 1,
+      "vulnerability_ids": ["CVE-2024-0001"]
+    },
+    {
+      "ip": "10.0.0.2",
+      "assets": [],
+      "vulnerabilities": 0,
+      "vulnerability_ids": [],
+      "error": "context deadline exceeded"
+    }
+  ]
+}
+```
+
+HTTP 提交任务返回新增和移除的 host。提交单个 namespace 返回对象，批量提交返回对象数组：
+
+```json
+{
+  "namespace": "ns1",
+  "host_count": 2,
+  "timeout": 600,
+  "added": ["10.0.0.1", "10.0.0.2"],
+  "removed": []
+}
+```
+
+HTTP 查询结果从 SQLite 读取，host 状态为 `pending`、`running`、`completed` 或 `timeout`：
+
+```json
+{
+  "namespace": "ns1",
+  "host_count": 2,
+  "timeout": 600,
+  "hosts": [
+    {
+      "ip": "10.0.0.1",
+      "status": "completed",
+      "timeout": 600,
+      "assets": [],
+      "vulnerabilities": 0,
+      "vulnerability_ids": [],
+      "started_at": "2026-07-03T10:00:00Z",
+      "finished_at": "2026-07-03T10:02:00Z"
+    }
+  ]
+}
+```
+
+HTTP 错误统一返回：
+
+```json
+{"error":"namespace not found"}
 ```
 
 ## 参数和环境变量
