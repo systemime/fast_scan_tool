@@ -1,0 +1,70 @@
+name: release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag
+        required: true
+        default: v0.1.0
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: >
+      startsWith(github.ref, 'refs/tags/')
+      || github.event_name == 'workflow_dispatch'
+      || contains(github.event.head_commit.message, 'release workflow')
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || 'v0.1.0' }}
+      FSCAN_COMMIT: d7dbccab76e587f50dbcd45cb845b28048de9054
+
+    steps:
+      - name: Checkout fast_scan_tool
+        uses: actions/checkout@v4
+
+      - name: Checkout fscan
+        run: |
+          git clone --depth 1 --branch main https://github.com/shadow1ng/fscan.git ../fscan
+          git -C ../fscan checkout "$FSCAN_COMMIT"
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build release artifacts
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 go build -trimpath -ldflags='-s -w' -o dist/vulnscan-wrapper-linux-amd64 .
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o dist/vulnscan-wrapper-linux-arm64 .
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags='-s -w' -o dist/vulnscan-wrapper-linux-armv7 .
+          sha256sum dist/vulnscan-wrapper-linux-* poc-map-budget.example.json > dist/SHA256SUMS
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || \
+            gh release create "$RELEASE_TAG" \
+              --title "$RELEASE_TAG" \
+              --notes "Initial non-commercial release with Linux amd64, arm64, and armv7 static binaries."
+          gh release upload "$RELEASE_TAG" \
+            dist/vulnscan-wrapper-linux-amd64 \
+            dist/vulnscan-wrapper-linux-arm64 \
+            dist/vulnscan-wrapper-linux-armv7 \
+            dist/SHA256SUMS \
+            poc-map-budget.example.json \
+            --clobber
