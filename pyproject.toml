@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fast-scan-tool"
+version = "0.1.0"
+description = "Pure Python namespace asset scanner wrapper for fscan and nuclei"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "systemime" }]
+
+[project.optional-dependencies]
+celery = ["celery[redis]>=5.4"]
+build = ["nuitka>=2.6", "zstandard>=0.22"]
+
+[project.scripts]
+vulnscan-wrapper = "vulnscan_tool:main"
+
+[tool.setuptools]
+py-modules = ["vulnscan_tool"]

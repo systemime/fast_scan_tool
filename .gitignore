@@ -1,3 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+build/
+*.build/
+*.dist/
+*.onefile-build/
+
 # Build outputs
 /dist/
 /vulnscan
@@ -30,3 +44,6 @@
 .DS_Store
 *.swp
 *.tmp
+.venv-*/
+nuitka-crash-report.xml
+/test-results/

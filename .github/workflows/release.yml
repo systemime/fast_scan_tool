@@ -2,16 +2,14 @@ name: release
 
 on:
   push:
-    branches:
-      - main
-    tags:
-      - "v*"
+    branches: [main, 0.1.0-python]
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
         description: Release tag
         required: true
-        default: v0.1.0
+        default: v0.1.0-python
 
 permissions:
   contents: write
@@ -24,47 +22,37 @@ jobs:
       || contains(github.event.head_commit.message, 'release workflow')
     runs-on: ubuntu-latest
     env:
-      RELEASE_TAG: ${{ github.event.inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || 'v0.1.0' }}
-      FSCAN_COMMIT: d7dbccab76e587f50dbcd45cb845b28048de9054
+      RELEASE_TAG: ${{ github.event.inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || 'v0.1.0-python' }}
 
     steps:
-      - name: Checkout fast_scan_tool
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Checkout fscan
-        run: |
-          git clone --depth 1 --branch main https://github.com/shadow1ng/fscan.git ../fscan
-          git -C ../fscan checkout "$FSCAN_COMMIT"
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-python@v5
         with:
-          go-version-file: go.mod
-          check-latest: true
+          python-version: "3.11"
 
       - name: Test
-        run: go test ./...
+        run: python -m unittest -v
 
-      - name: Build release artifacts
+      - name: Build wheel and Nuitka binary
         run: |
-          mkdir -p dist
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v1 go build -trimpath -ldflags='-s -w' -o dist/vulnscan-wrapper-linux-amd64 .
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o dist/vulnscan-wrapper-linux-arm64 .
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags='-s -w' -o dist/vulnscan-wrapper-linux-armv7 .
-          sha256sum dist/vulnscan-wrapper-linux-* poc-map-budget.example.json > dist/SHA256SUMS
+          docker run --rm -v "$PWD:/src" -w /src python:3.11-bullseye bash -lc '
+            set -e
+            apt-get update
+            apt-get install -y --no-install-recommends patchelf
+            python -m pip install -U pip build
+            python -m pip install ".[build]"
+            python -m build
+            python -m nuitka --mode=onefile --assume-yes-for-downloads \
+              --output-dir=dist --output-filename=vulnscan-wrapper-linux-amd64 \
+              vulnscan_tool.py
+            find dist -maxdepth 1 -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > dist/SHA256SUMS
+          '
 
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "$RELEASE_TAG" >/dev/null 2>&1 || \
-            gh release create "$RELEASE_TAG" \
-              --title "$RELEASE_TAG" \
-              --notes "Initial non-commercial release with Linux amd64, arm64, and armv7 static binaries."
-          gh release upload "$RELEASE_TAG" \
-            dist/vulnscan-wrapper-linux-amd64 \
-            dist/vulnscan-wrapper-linux-arm64 \
-            dist/vulnscan-wrapper-linux-armv7 \
-            dist/SHA256SUMS \
-            poc-map-budget.example.json \
-            --clobber
+            gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --notes "Pure Python release with wheel, sdist, and Nuitka Linux amd64 binary."
+          gh release upload "$RELEASE_TAG" dist/* --clobber
