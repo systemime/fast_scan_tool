@@ -16,7 +16,7 @@ celery = ["celery[redis]>=5.4"]
 build = ["nuitka>=2.6", "zstandard>=0.22"]
 
 [project.scripts]
-vulnscan-wrapper = "vulnscan_tool:main"
+vulnscan-wrapper = "fast_scan_tool:main"
 
-[tool.setuptools]
-py-modules = ["vulnscan_tool"]
+[tool.setuptools.packages.find]
+include = ["fast_scan_tool*"]

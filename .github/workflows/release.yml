@@ -44,8 +44,9 @@ jobs:
             python -m pip install ".[build]"
             python -m build
             python -m nuitka --mode=onefile --assume-yes-for-downloads \
+              --python-flag=-m \
               --output-dir=dist --output-filename=vulnscan-wrapper-linux-amd64 \
-              vulnscan_tool.py
+              fast_scan_tool
             find dist -maxdepth 1 -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > dist/SHA256SUMS
           '
 

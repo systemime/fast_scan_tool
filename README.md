@@ -1,4 +1,4 @@
-# Vuln Scan Tool
+# Fast Scan Tool
 
 纯 Python 版 Linux network namespace 资产扫描和漏洞验证工具。代码只依赖 Python 标准库；运行扫描时调用系统里的 `fscan` 和 `nuclei` 命令行程序，HTTP 服务用 SQLite 保存任务。
 
@@ -77,7 +77,7 @@ EOF
 
 sudo tee /etc/systemd/system/vulnscan-wrapper.service >/dev/null <<'EOF'
 [Unit]
-Description=Vuln Scan Tool
+Description=Fast Scan Tool
 After=network-online.target
 Wants=network-online.target
 
@@ -135,15 +135,15 @@ EOF
 ```bash
 cd /opt/vulnscan
 . /opt/vulnscan/venv/bin/activate
-celery -A vulnscan_tool.celery_app worker --loglevel=INFO --concurrency=4 --autoscale=16,2 -n vulnscan@%h
+celery -A fast_scan_tool.celery_app worker --loglevel=INFO --concurrency=4 --autoscale=16,2 -n vulnscan@%h
 ```
 
 如果没有启用 `--autoscale`，也可以运行中临时调节固定 worker 池：
 
 ```bash
-celery -A vulnscan_tool.celery_app worker --loglevel=INFO --concurrency=4 -n vulnscan@%h
-celery -A vulnscan_tool.celery_app control pool_grow 4
-celery -A vulnscan_tool.celery_app control pool_shrink 2
+celery -A fast_scan_tool.celery_app worker --loglevel=INFO --concurrency=4 -n vulnscan@%h
+celery -A fast_scan_tool.celery_app control pool_grow 4
+celery -A fast_scan_tool.celery_app control pool_shrink 2
 ```
 
 启用 `--autoscale` 时让 autoscaler 控制池大小，不要混用 `pool_grow/pool_shrink`。多机部署时让 HTTP 服务和 Celery worker 使用同一个 broker，并确保 worker 能访问同一个 `VST_DB` 路径或改成共享数据库实现；SQLite 更适合同机多进程。
@@ -165,18 +165,20 @@ Standalone 目录发布：
 
 ```bash
 python -m nuitka --mode=standalone --assume-yes-for-downloads \
+  --python-flag=-m \
   --output-dir=dist \
   --output-filename=vulnscan-wrapper \
-  vulnscan_tool.py
+  fast_scan_tool
 ```
 
 Onefile 单文件发布：
 
 ```bash
 python -m nuitka --mode=onefile --assume-yes-for-downloads \
+  --python-flag=-m \
   --output-dir=dist \
   --output-filename=vulnscan-wrapper-linux-amd64 \
-  vulnscan_tool.py
+  fast_scan_tool
 ```
 
 部署 onefile：
@@ -211,7 +213,7 @@ sudo systemctl restart vulnscan-wrapper
 
 ```bash
 python -m unittest -v
-python -m vulnscan_tool --help
+python -m fast_scan_tool --help
 ```
 
 ## 参考
